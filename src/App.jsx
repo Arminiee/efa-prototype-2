@@ -11,6 +11,59 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Download, BarChart3, MapPinned, Building2, Loader2, Plus } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, PieChart, Pie, LineChart, Line, Legend, CartesianGrid } from "recharts";
 
+// ---- Robust sizing helpers (works in iframes & dynamic layouts)
+function useMeasure() {
+  const ref = React.useRef(null);
+  const [rect, setRect] = React.useState({ width: 0, height: 0 });
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const cr = e.contentRect;
+        setRect({ width: cr.width, height: cr.height });
+      }
+    });
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, rect];
+}
+
+function ChartContainer({ height = 260, children }) {
+  const [ref, rect] = useMeasure();
+  // Nudge Recharts after mount for environments reporting 0 width initially
+  React.useEffect(() => {
+    const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div ref={ref} style={{ height }}>
+      {rect.width > 10 ? children : <div style={{height}} />}
+    </div>
+  );
+}
+
+
+function useWindowSize(){
+  const [size, setSize] = React.useState({ w: typeof window !== 'undefined' ? window.innerWidth : 0, h: typeof window !== 'undefined' ? window.innerHeight : 0 });
+  React.useEffect(()=>{
+    const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
+    const nudge = () => setTimeout(() => window.dispatchEvent(new Event('resize')), 250);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('pageshow', nudge);
+    document.addEventListener('visibilitychange', nudge);
+    const t = setTimeout(nudge, 300);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('pageshow', nudge);
+      document.removeEventListener('visibilitychange', nudge);
+      clearTimeout(t);
+    }
+  },[]);
+  return size;
+}
+
+
 const DIVISIONS = ["Dhaka","Chattogram","Khulna","Barishal","Rajshahi","Sylhet","Rangpur","Mymensingh"];
 const ENCROACH_TYPES = ["River","Forest"];
 const STATUS_FILED = ["Filed","In Trial","Verdict Given"];
@@ -563,6 +616,7 @@ function Stats({ cases }){
     return Array.from(map.entries()).sort(([a],[b])=>a.localeCompare(b)).map(([month,count])=>({month,count}))
   },[cases])
 
+  const win = useWindowSize();
   return (
     <section className="space-y-4">
       <div className="grid md:grid-cols-3 gap-3">
@@ -589,7 +643,7 @@ function Stats({ cases }){
         <Card className="rounded-2xl shadow-sm">
           <CardHeader className="pb-2"><CardTitle className="text-base">Cases by Implementation Status</CardTitle></CardHeader>
           <CardContent style={{height:220}}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer key={win.w} width="100%" height="100%">
               <PieChart>
                 <Pie data={statusDist} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} />
                 <Legend />
@@ -604,7 +658,7 @@ function Stats({ cases }){
         <Card className="rounded-2xl shadow-sm">
           <CardHeader className="pb-2"><CardTitle className="text-base">Fines Levied vs Collected by Division</CardTitle></CardHeader>
           <CardContent style={{height:300}}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer key={win.w} width="100%" height="100%">
               <BarChart data={finesByDivision}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="division" />
@@ -621,7 +675,7 @@ function Stats({ cases }){
         <Card className="rounded-2xl shadow-sm">
           <CardHeader className="pb-2"><CardTitle className="text-base">Filings per Month</CardTitle></CardHeader>
           <CardContent style={{height:300}}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer key={win.w} width="100%" height="100%">
               <LineChart data={filingsByMonth}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
@@ -630,7 +684,8 @@ function Stats({ cases }){
                 <RTooltip />
                 <Line type="monotone" dataKey="count" name="Filings" />
               </LineChart>
-            </ResponsiveContainer>
+              </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>
@@ -651,6 +706,7 @@ function downloadJSON(name, data){
 }
 
 function About(){
+  const win = useWindowSize();
   return (
     <section className="space-y-3 max-w-3xl">
       <h2 className="text-xl font-semibold">About this Prototype</h2>
